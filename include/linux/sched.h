@@ -153,10 +153,10 @@ extern void get_avenrun(unsigned long *loads, unsigned long offset, int shift);
 
 #define FSHIFT		11		/* nr of bits of precision */
 #define FIXED_1		(1<<FSHIFT)	/* 1.0 as fixed-point */
-#define LOAD_FREQ	(5*HZ+1)	/* 5 sec intervals */
-#define EXP_1		1884		/* 1/exp(5sec/1min) as fixed-point */
-#define EXP_5		2014		/* 1/exp(5sec/5min) */
-#define EXP_15		2037		/* 1/exp(5sec/15min) */
+#define LOAD_FREQ	(4*HZ+61)	/* 5 sec intervals */
+#define EXP_1		1896		/* 1/exp(5sec/1min) as fixed-point */
+#define EXP_5		2017		/* 1/exp(5sec/5min) */
+#define EXP_15		2038		/* 1/exp(5sec/15min) */
 
 #define CALC_LOAD(load,exp,n) \
 	load *= exp; \
@@ -2039,6 +2039,41 @@ extern void thread_group_cputime_adjusted(struct task_struct *p, cputime_t *ut, 
 extern int task_free_register(struct notifier_block *n);
 extern int task_free_unregister(struct notifier_block *n);
 
+struct sched_load {
+	unsigned long prev_load;
+	unsigned long new_task_load;
+	unsigned long predicted_load;
+};
+
+#if defined(CONFIG_SCHED_QHMP) || !defined(CONFIG_SCHED_HMP)
+static inline int sched_update_freq_max_load(const cpumask_t *cpumask)
+{
+	return 0;
+}
+#else
+int sched_update_freq_max_load(const cpumask_t *cpumask);
+#endif
+
+#if defined(CONFIG_SCHED_FREQ_INPUT)
+extern int sched_set_window(u64 window_start, unsigned int window_size);
+extern unsigned long sched_get_busy(int cpu);
+extern void sched_get_cpus_busy(struct sched_load *busy,
+				const struct cpumask *query_cpus);
+extern void sched_set_io_is_busy(int val);
+#else
+static inline int sched_set_window(u64 window_start, unsigned int window_size)
+{
+	return -EINVAL;
+}
+static inline unsigned long sched_get_busy(int cpu)
+{
+	return 0;
+}
+static inline void sched_get_cpus_busy(struct sched_load *busy,
+				       const struct cpumask *query_cpus) {};
+static inline void sched_set_io_is_busy(int val) {};
+#endif
+
 /*
  * Per process flags
  */
@@ -2434,6 +2469,7 @@ extern void xtime_update(unsigned long ticks);
 
 extern int wake_up_state(struct task_struct *tsk, unsigned int state);
 extern int wake_up_process(struct task_struct *tsk);
+extern int wake_up_process_no_notif(struct task_struct *tsk);
 extern void wake_up_new_task(struct task_struct *tsk);
 #ifdef CONFIG_SMP
  extern void kick_process(struct task_struct *tsk);
@@ -3093,6 +3129,15 @@ static inline void set_task_cpu(struct task_struct *p, unsigned int cpu)
 
 #endif /* CONFIG_SMP */
 
+extern struct atomic_notifier_head migration_notifier_head;
+struct migration_notify_data {
+	int src_cpu;
+	int dest_cpu;
+	int load;
+};
+
+static struct atomic_notifier_head load_alert_notifier_head __maybe_unused;
+
 extern long sched_setaffinity(pid_t pid, const struct cpumask *new_mask);
 extern long sched_getaffinity(pid_t pid, struct cpumask *mask);
 
@@ -3175,4 +3220,38 @@ static inline unsigned long rlimit_max(unsigned int limit)
 	return task_rlimit_max(current, limit);
 }
 
+#if defined(CONFIG_HP_EVENT_THREAD_GROUP) || defined(CONFIG_HP_EVENT_HMP_SYSTEM_LOAD)
+void hp_event_enqueue_entity(struct sched_entity *se, int flags);
+void hp_event_dequeue_entity(struct sched_entity *se, int flags);
+void hp_event_update_entity_load(struct sched_entity *se);
+void hp_event_switched_from(struct sched_entity *se);
+void hp_event_do_exit(struct task_struct *p);
+void hp_event_update_rq_load(int cpu);
+extern unsigned int *pcpu_efficiency;
+#else
+static inline void hp_event_update_entity_load(struct sched_entity *se) { };
+static inline void hp_event_enqueue_entity(struct sched_entity *se, int flags) { };
+static inline void hp_event_dequeue_entity(struct sched_entity *se, int flags) { };
+static inline void hp_event_switched_from(struct sched_entity *se) { };
+static inline void hp_event_do_exit(struct task_struct *p) { };
+static inline void hp_event_update_rq_load(int cpu) { };
+#endif
+
+#if defined(CONFIG_HP_EVENT_HMP_SYSTEM_LOAD)
+extern int hp_sysload_to_quad_ratio;
+extern int hp_sysload_to_dual_ratio;
+extern int hp_sysload_param_calc(void);
+extern int hp_little_multiplier_ratio;
+#endif
+
+extern void save_pcpu_tick(int cpu);
+extern void restore_pcpu_tick(int cpu);
+#endif
+
+#ifdef arch_scale_freq_capacity
+#ifndef arch_scale_freq_invariant
+#define arch_scale_freq_invariant()     (true)
+#endif
+#else /* arch_scale_freq_capacity */
+#define arch_scale_freq_invariant()     (false)
 #endif

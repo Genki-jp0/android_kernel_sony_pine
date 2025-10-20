@@ -2336,8 +2336,10 @@ static int do_new_mount(struct path *path, const char *fstype, int flags,
 			mnt_flags |= MNT_NODEV | MNT_LOCK_NODEV;
 		}
 		if (type->fs_flags & FS_USERNS_VISIBLE) {
-			if (!fs_fully_visible(type, &mnt_flags))
+			if (!fs_fully_visible(type, &mnt_flags)) {
+				put_filesystem(type);
 				return -EPERM;
+			}
 		}
 	}
 
@@ -2616,8 +2618,8 @@ long do_mount(const char *dev_name, const char __user *dir_name,
 		goto dput_out;
 
 	/* Default to relatime unless overriden */
-	if (!(flags & MS_NOATIME))
-		mnt_flags |= MNT_RELATIME;
+	// if (!(flags & MS_NOATIME))
+	//	mnt_flags |= MNT_RELATIME;
 
 	/* Separate the per-mountpoint flags */
 	if (flags & MS_NOSUID)
@@ -2626,9 +2628,9 @@ long do_mount(const char *dev_name, const char __user *dir_name,
 		mnt_flags |= MNT_NODEV;
 	if (flags & MS_NOEXEC)
 		mnt_flags |= MNT_NOEXEC;
-	if (flags & MS_NOATIME)
+	// if (flags & MS_NOATIME)
 		mnt_flags |= MNT_NOATIME;
-	if (flags & MS_NODIRATIME)
+	// if (flags & MS_NODIRATIME)
 		mnt_flags |= MNT_NODIRATIME;
 	if (flags & MS_STRICTATIME)
 		mnt_flags &= ~(MNT_RELATIME | MNT_NOATIME);
@@ -3178,7 +3180,7 @@ static bool fs_fully_visible(struct file_system_type *type, int *new_mnt_flags)
 		list_for_each_entry(child, &mnt->mnt_mounts, mnt_child) {
 			struct inode *inode = child->mnt_mountpoint->d_inode;
 			/* Only worry about locked mounts */
-			if (!(mnt->mnt.mnt_flags & MNT_LOCKED))
+			if (!(child->mnt.mnt_flags & MNT_LOCKED))
 				continue;
 			if (!S_ISDIR(inode->i_mode))
 				goto next;

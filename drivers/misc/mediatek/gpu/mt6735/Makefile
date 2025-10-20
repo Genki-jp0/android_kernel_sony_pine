@@ -11,12 +11,11 @@
 # GNU General Public License for more details.
 #
 
-#ccflags-y += -Werror
+MTK_GPU_VERSION = $(subst ",,$(CONFIG_MTK_GPU_VERSION))
+$(info *MTK_GPU_VERSION 3 = $(word 3,$(MTK_GPU_VERSION)))
 
-ifeq ($(CONFIG_MTK_GPU_R5P0),y)
-$(info GPU BUILD r5p0)
-obj-y += mali-EAC/drivers/
+ifneq ($(word 3,$(MTK_GPU_VERSION)),)
+    obj-y += mali-$(word 3,$(MTK_GPU_VERSION))/drivers/
 else
-$(info GPU BUILD r7p0)
-obj-y += mali-r7p0/drivers/
+    obj-y += mali-EAC/drivers/
 endif
